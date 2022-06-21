@@ -4,15 +4,15 @@ import emu.grasscutter.Grasscutter;
 import emu.grasscutter.command.Command;
 import emu.grasscutter.command.CommandHandler;
 import emu.grasscutter.data.GameData;
-import emu.grasscutter.data.excels.AvatarData;
-import emu.grasscutter.data.excels.GadgetData;
-import emu.grasscutter.data.excels.ItemData;
-import emu.grasscutter.data.excels.MonsterData;
+import emu.grasscutter.data.excels.*;
 import emu.grasscutter.game.avatar.Avatar;
 import emu.grasscutter.game.entity.*;
 import emu.grasscutter.game.player.Player;
 import emu.grasscutter.game.props.EntityType;
 import emu.grasscutter.game.props.FightProperty;
+import emu.grasscutter.scripts.data.SceneBlock;
+import emu.grasscutter.scripts.data.SceneGroup;
+import emu.grasscutter.scripts.data.SceneNPC;
 import emu.grasscutter.utils.Position;
 import emu.grasscutter.game.world.Scene;
 
@@ -68,6 +68,7 @@ public final class SpawnCommand implements CommandHandler {
         MonsterData monsterData = GameData.getMonsterDataMap().get(id);
         GadgetData gadgetData = GameData.getGadgetDataMap().get(id);
         ItemData itemData = GameData.getItemDataMap().get(id);
+        NpcData npcData = GameData.getNpcDataMap().get(id);
         if (monsterData == null && gadgetData == null && itemData == null) {
             CommandHandler.sendMessage(sender, translate(sender, "commands.generic.invalid.entityId"));
             return;
@@ -75,13 +76,13 @@ public final class SpawnCommand implements CommandHandler {
        
         Scene scene = targetPlayer.getScene();
         
-        if (scene.getEntities().size() + amount > GAME_OPTIONS.sceneEntityLimit) {
+        /*if (scene.getEntities().size() + amount > GAME_OPTIONS.sceneEntityLimit) {
         	amount = Math.max(Math.min(GAME_OPTIONS.sceneEntityLimit - scene.getEntities().size(), amount), 0);
         	CommandHandler.sendMessage(sender, translate(sender, "commands.spawn.limit_reached", amount));
         	if (amount <= 0) {
         		return;
         	}
-        }
+        }*/
 
         double maxRadius = Math.sqrt(amount * 0.2 / Math.PI);
         for (int i = 0; i < amount; i++) {
@@ -90,7 +91,39 @@ public final class SpawnCommand implements CommandHandler {
                 pos = GetRandomPositionInCircle(new Position(x, y, z), maxRadius).addY(3);
             }
             GameEntity entity = null;
-            if (itemData != null) {
+            if(npcData != null) {
+                var metaNpc = new SceneNPC();
+                metaNpc.npc_id = id;
+                metaNpc.pos = new Position();
+                metaNpc.rot = new Position();
+
+                metaNpc.pos.setX(x);
+                metaNpc.pos.setY(y);
+                metaNpc.pos.setZ(z);
+
+                var blocks = scene.getLoadedBlocks();
+                SceneBlock bk = null;
+                for (SceneBlock block : blocks) {
+                    if(block.groups != null) {
+                        for (var group : block.groups.values()) {
+                            //if(group.npc != null) {
+                                /*for (var npc : group.npc.values()) {
+                                    metaNpc.group = npc.group;
+                                    break;
+                                }*/
+                            //}
+                            metaNpc.group = group;
+                            bk = block;
+                            break;
+                        }
+                    }
+                }
+                //metaNpc.group = (SceneGroup) blocks.get(0).groups.values().toArray()[0];
+                //metaNpc.group = new SceneGroup();
+
+                entity = new EntityNPC(scene, metaNpc, bk.id, 1);
+            }
+            if (entity == null && itemData != null) {
                 entity = new EntityItem(scene, null, itemData, pos, 1, true);
             }
             if (gadgetData != null) {

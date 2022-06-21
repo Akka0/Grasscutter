@@ -42,6 +42,22 @@ public class GameServerPacketHandler {
 		}
 	}
 
+	public static boolean isPacketHandlerIgnored(String name) {
+		if(name.contains("HandlerCombatInvocationsNotify"))
+			return true;
+		if(name.contains("HandlerUnionCmdNotify"))
+			return true;
+		if(name.contains("HandlerPingReq"))
+			return true;
+		if(name.contains("HandlerAbilityInvocationsNotify"))
+			return true;
+		if(name.contains("HandlerQueryPathReq"))
+			return true;
+		if(name.contains("HandlerEvtAiSyncSkillCdNotify"))
+			return true;
+		return true;
+	}
+
 	public void registerHandlers(Class<? extends PacketHandler> handlerClass) {
 		Reflections reflections = new Reflections("emu.grasscutter.server.packet");
 		Set<?> handlerClasses = reflections.getSubTypesOf(handlerClass);
@@ -56,7 +72,8 @@ public class GameServerPacketHandler {
 	
 	public void handle(GameSession session, int opcode, byte[] header, byte[] payload) {
 		PacketHandler handler = this.handlers.get(opcode);
-		
+		//if(handler == null || !isPacketHandlerIgnored(handler.getClass().getName()))
+			//System.out.println("opcode_: " + opcode + " handler ? " + (handler != null ? handler.getClass().getName() : "null"));
 		if (handler != null) {
 			try {
 				// Make sure session is ready for packets

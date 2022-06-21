@@ -1,5 +1,6 @@
 package emu.grasscutter.scripts;
 
+import com.esotericsoftware.reflectasm.MethodAccess;
 import emu.grasscutter.Grasscutter;
 import emu.grasscutter.game.dungeons.challenge.DungeonChallenge;
 import emu.grasscutter.game.dungeons.challenge.factory.ChallengeFactory;
@@ -7,12 +8,17 @@ import emu.grasscutter.game.entity.EntityGadget;
 import emu.grasscutter.game.entity.EntityMonster;
 import emu.grasscutter.game.entity.GameEntity;
 import emu.grasscutter.game.entity.gadget.GadgetWorktop;
+import emu.grasscutter.game.props.EntityType;
 import emu.grasscutter.scripts.data.SceneGroup;
-import emu.grasscutter.scripts.engine.LuaTable;
 import emu.grasscutter.server.packet.send.PacketCanUseSkillNotify;
 import emu.grasscutter.server.packet.send.PacketWorktopOptionNotify;
+import org.terasology.jnlua.LuaState;
+import org.terasology.jnlua.NamedJavaFunction;
+import org.terasology.jnlua.util.AbstractTableMap;
 
-import java.util.Optional;
+import javax.script.ScriptContext;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class ScriptLib {
 
@@ -43,7 +49,7 @@ public class ScriptLib {
 		return 0;
 	}
 	
-	public int SetWorktopOptionsByGroupId(ScriptLibContext context, int groupId, int configId, int[] options) {
+	public int SetWorktopOptionsByGroupId(ScriptLibContext context, int groupId, int configId, Object options) {
 		
 		Optional<GameEntity> entity = context.getSceneScriptManager().getScene().getEntities().values().stream()
 				.filter(e -> e.getConfigId() == configId && e.getGroupId() == groupId).findFirst();
@@ -57,13 +63,18 @@ public class ScriptLib {
 			return 1;
 		}
 		
-		worktop.addWorktopOptions(options);
+		worktop.addWorktopOptions(ScriptUtils.toIntArray(options));
 		context.getSceneScriptManager().getScene().broadcastPacket(new PacketWorktopOptionNotify(gadget));
 		
 		return 0;
 	}
 
-	public int SetWorktopOptions(ScriptLibContext context, LuaTable table){
+	public EntityType GetEntityType(int tid) {
+		return EntityType.Avatar;
+	}
+
+	public int SetWorktopOptions(ScriptLibContext context, Object table_){
+
 		// TODO
 		return 0;
 	}
@@ -86,7 +97,8 @@ public class ScriptLib {
 	}
 	
 	// Some fields are guessed
-	public int AutoMonsterTide(ScriptLibContext context, int challengeIndex, int groupId, Integer[] ordersConfigId, int tideCount, int sceneLimit, int param6) {
+	public int AutoMonsterTide(ScriptLibContext context, int challengeIndex, int groupId, Object ordersConfigId_, int tideCount, int sceneLimit, int param6) {
+		var ordersConfigId = ScriptUtils.toIntegerArray(ordersConfigId_);
 		SceneGroup group = context.getSceneScriptManager().getGroupById(groupId);
 
 		if (group == null || group.monsters == null) {
@@ -94,7 +106,7 @@ public class ScriptLib {
 		}
 
 		context.getSceneScriptManager().startMonsterTideInGroup(group, ordersConfigId, tideCount, sceneLimit);
-		
+
 		return 0;
 	}
 	
@@ -221,23 +233,26 @@ public class ScriptLib {
 	/**
 	 * Set the actions and triggers to designated group
 	 */
-	public int RefreshGroup(ScriptLibContext context, LuaTable table) {
+	public int RefreshGroup(ScriptLibContext context, Object table_) {
+		var table = (AbstractTableMap)table_;
 		// Kill and Respawn?
-		int groupId = ((Long)table.get("group_id")).intValue();
-		int suite = ((Long)table.get("suite")).intValue();
+		int groupId = ((Integer)table.get("group_id"));
+		int suite = ((Integer)table.get("suite"));
 		
 		SceneGroup group = context.getSceneScriptManager().getGroupById(groupId);
 		
 		if (group == null || group.monsters == null) {
 			return 1;
 		}
-		
+
+
 		context.getSceneScriptManager().refreshGroup(group, suite);
 		
 		return 0;
 	}
 	
-	public int GetRegionEntityCount(ScriptLibContext context, LuaTable table) {
+	public int GetRegionEntityCount(ScriptLibContext context, Object table_) {
+		var table = (AbstractTableMap)table_;
 		int regionId = ScriptUtils.getInt(table.get("region_eid"));
 		int entityType = ScriptUtils.getInt(table.get("entity_type"));
 
@@ -286,13 +301,14 @@ public class ScriptLib {
 		return 0;
 	}
 
-	public int KillEntityByConfigId(ScriptLibContext context, LuaTable table){
+	public int KillEntityByConfigId(ScriptLibContext context, Object table_){
+		var table = (AbstractTableMap)table_;
 		var configId = table.get("config_id");
 		if(configId == null){
 			return 1;
 		}
 
-		var entity = context.getSceneScriptManager().getScene().getEntityByConfigId(((Long)configId).intValue());
+		var entity = context.getSceneScriptManager().getScene().getEntityByConfigId(((Integer)configId).intValue());
 		if(entity == null){
 			return 0;
 		}
@@ -306,7 +322,8 @@ public class ScriptLib {
 		return 0;
 	}
 
-	public int CreateMonster(ScriptLibContext context, LuaTable table){
+	public int CreateMonster(ScriptLibContext context, Object table_){
+		var table = (AbstractTableMap)table_;
 		var configId = ScriptUtils.getInt(table.get("config_id"));
 		var delayTime = ScriptUtils.getInt(table.get("delay_time"));
 
@@ -326,7 +343,8 @@ public class ScriptLib {
 		return 0;
 	}
 
-	public int CreateGadget(ScriptLibContext context, LuaTable table){
+	public int CreateGadget(ScriptLibContext context, Object table_) throws Exception {
+		var table = (AbstractTableMap)table_;
 		var configId = ScriptUtils.getInt(table.get("config_id"));
 
 		var group = context.getCurrentGroup();
@@ -334,15 +352,25 @@ public class ScriptLib {
 		if (group == null) {
 			return 1;
 		}
-		
+
 		var gadget = group.gadgets.get(configId);
 		var entity = context.getSceneScriptManager().createGadget(group.id, group.block_id, gadget);
-		
+		if(entity == null) {
+			System.out.println("Error to create a null-entity.");
+		}
 		context.getSceneScriptManager().addEntity(entity);
 
 		return 0;
 	}
-	public int CheckRemainGadgetCountByGroupId(ScriptLibContext context, LuaTable table){
+
+	public int PrintLog(String content) {
+		Grasscutter.getLogger().debug(content);
+
+		return 0;
+	}
+
+	public int CheckRemainGadgetCountByGroupId(ScriptLibContext context, Object table_){
+		var table = (AbstractTableMap)table_;
 		var groupId = ScriptUtils.getInt(table.get("group_id"));
 
 		var count = context.getSceneScriptManager().getScene().getEntities().values().stream()
@@ -380,10 +408,10 @@ public class ScriptLib {
 	/**
 	 * change the state of gadget
 	 */
-	public int ChangeGroupGadget(ScriptLibContext context, LuaTable table){
+	public int ChangeGroupGadget(ScriptLibContext context, Object table_){
+		var table = (AbstractTableMap)table_;
 		var configId = ScriptUtils.getInt(table.get("config_id"));
 		var state = ScriptUtils.getInt(table.get("state"));
-
 		var entity = context.getSceneScriptManager().getScene().getEntityByConfigId(configId);
 		if(entity == null){
 			return 1;
@@ -409,6 +437,11 @@ public class ScriptLib {
 		}
 		context.getSceneScriptManager().getScene().removeEntity(entity.get());
 
+		return 0;
+	}
+
+	public int ShowReminder(ScriptLibContext context, int reminderId) {
+		System.out.println("Unimplemented function [ShowRemainder] called. reminderId: " + reminderId);
 		return 0;
 	}
 }

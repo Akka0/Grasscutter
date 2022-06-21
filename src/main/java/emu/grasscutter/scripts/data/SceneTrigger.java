@@ -11,8 +11,8 @@ public class SceneTrigger {
 	public String source;
 	public String condition;
 	public String action;
-	public transient LuaFunction conditionFunc;
-	public transient LuaFunction actionFunc;
+	/*public transient String condition;
+	public transient String action;*/
 	public transient SceneGroup currentGroup;
 	@Override
 	public boolean equals(Object obj) {

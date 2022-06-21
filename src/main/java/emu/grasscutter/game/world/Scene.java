@@ -30,6 +30,7 @@ import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import org.danilopianini.util.SpatialIndex;
 
 import java.util.*;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Collectors;
 
 public class Scene {
@@ -333,7 +334,6 @@ public class Scene {
 		for (GameEntity entity : entities) {
 			this.addEntityDirectly(entity);
 		}
-		
 		this.broadcastPacket(new PacketSceneEntityAppearNotify(entities, visionType));
 	}
 	
@@ -521,13 +521,18 @@ public class Scene {
 	}
 
 	public List<SceneBlock> getPlayerActiveBlocks(Player player){
+		return getNearByActiveBlocks(player.getPos());
+	}
+
+	public List<SceneBlock> getNearByActiveBlocks(Position pos){
 		if (getScriptManager().getBlocksIndex() == null){
 			return List.of();
 		}
 		// consider the borders' entities of blocks, so we check if contains by index
 		return SceneIndexManager.queryNeighbors(getScriptManager().getBlocksIndex(),
-				player.getPos().toXZDoubleArray(), Grasscutter.getConfig().server.game.loadEntitiesForPlayerRange);
+				pos.toXZDoubleArray(), Grasscutter.getConfig().server.game.loadEntitiesForPlayerRange);
 	}
+
 	public void checkBlocks() {
 		Set<SceneBlock> visible = new HashSet<>();
 		for (Player player : this.getPlayers()) {
@@ -560,7 +565,7 @@ public class Scene {
 				onLoadGroup(toLoad);
 			}
 			for (Player player : this.getPlayers()) {
-				getScriptManager().meetEntities(loadNpcForPlayer(player, block));
+				//getScriptManager().meetEntities(loadNpcForPlayer(player, block));
 			}
 		}
 
@@ -611,10 +616,10 @@ public class Scene {
 			if (group.init_config == null) {
 				continue;
 			}
-			
+
 			// Load garbages
 			List<SceneGadget> garbageGadgets = group.getGarbageGadgets();
-			
+
 			if (garbageGadgets != null) {
 				entities.addAll(garbageGadgets.stream().map(g -> scriptManager.createGadget(group.id, group.block_id, g))
 						.filter(Objects::nonNull)
@@ -642,9 +647,7 @@ public class Scene {
 					.toList());
 			suiteData.sceneRegions.stream().map(region -> new EntityRegion(this, region))
 					.forEach(scriptManager::registerRegion);
-
 		}
-
 		scriptManager.meetEntities(entities);
 		//scriptManager.callEvent(EventType.EVENT_GROUP_LOAD, null);
 		//groups.forEach(g -> scriptManager.callEvent(EventType.EVENT_GROUP_LOAD, null));

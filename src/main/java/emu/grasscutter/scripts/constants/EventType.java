@@ -82,4 +82,5 @@ public class EventType {
 	public static final int EVENT_SET_GAME_TIME = 75;
 	public static final int EVENT_HIDE_AND_SEEK_PLAYER_QUIT = 76;
 	public static final int EVENT_AVATAR_DIE = 77;
+	public static final int EVENT_PLATFORM_ARRIVAL = 78;
 }

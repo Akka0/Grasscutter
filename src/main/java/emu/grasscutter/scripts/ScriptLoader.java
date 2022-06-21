@@ -1,27 +1,32 @@
 package emu.grasscutter.scripts;
 
+import com.esotericsoftware.reflectasm.MethodAccess;
 import emu.grasscutter.Grasscutter;
 import emu.grasscutter.game.props.EntityType;
 import emu.grasscutter.scripts.constants.EventType;
 import emu.grasscutter.scripts.constants.ScriptGadgetState;
 import emu.grasscutter.scripts.constants.ScriptRegionShape;
 import emu.grasscutter.scripts.data.SceneMeta;
-import emu.grasscutter.scripts.engine.CoerceJavaToLua;
-import emu.grasscutter.scripts.engine.LuaScriptContext;
-import emu.grasscutter.scripts.engine.LuaScriptEngine;
 import emu.grasscutter.scripts.serializer.LuaSerializer;
 import emu.grasscutter.scripts.serializer.Serializer;
 import net.sandius.rembulan.compiler.CompilerChunkLoader;
+import org.terasology.jnlua.JavaFunction;
+import org.terasology.jnlua.LuaState;
+import org.terasology.jnlua.NamedJavaFunction;
+import org.terasology.jnlua.script.CompiledLuaScript;
+import org.terasology.jnlua.script.LuaBindings;
+import org.terasology.jnlua.script.LuaScriptEngine;
 
+import javax.script.Compilable;
 import javax.script.CompiledScript;
+import javax.script.ScriptContext;
 import javax.script.ScriptEngineManager;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.lang.ref.SoftReference;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Arrays;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
@@ -31,6 +36,8 @@ public class ScriptLoader {
 	private static String fileType;
 	private static Serializer serializer;
 	private static ScriptLib scriptLib;
+
+	private static ScriptEngineManager manager = new ScriptEngineManager();
 	/**
 	 * suggest GC to remove it if the memory is less
 	 */
@@ -40,34 +47,44 @@ public class ScriptLoader {
 	 */
 	private static Map<Integer, SoftReference<SceneMeta>> sceneMetaCache = new ConcurrentHashMap<>();
 
+
 	public synchronized static void init() throws Exception {
 		if (sm != null) {
 			throw new Exception("Script loader already initialized");
 		}
-		
+
+		ScriptEngineManager manager = new ScriptEngineManager();
+
 		// Create script engine
 		sm = new ScriptEngineManager();
-        engine = new LuaScriptEngine();
-		engine.setLoader(CompilerChunkLoader.of("emu.grasscutter.scripts.lua"));
+        engine =(LuaScriptEngine) manager.getEngineByName("Lua");
         
         // Lua stuff
         fileType = "lua";
         serializer = new LuaSerializer();
         
         // Set engine to replace require as a temporary fix to missing scripts
-        LuaScriptContext ctx = (LuaScriptContext) engine.getContext();
+        ScriptContext ctx = (ScriptContext) engine.getContext();
 
-		ctx.addGlobalContext("require", new LuaScriptContext.NullFunction());
+		engine.put("require", new JavaFunction() {
+			@Override
+			public int invoke(LuaState luaState) {
+				return 0;
+			}
+		});
 
-		ctx.addGlobalContext("EntityType",
-				Arrays.stream(EntityType.values()).collect(Collectors.toMap(e -> e.name().toUpperCase(), EntityType::getValue)));
+		//engine.put("EntityType",
+		//		Arrays.stream(EntityType.values()).collect(Collectors.toMap(e -> e.name().toUpperCase(), EntityType::getValue)));
 
-		ctx.addGlobalContext("EventType", CoerceJavaToLua.coerce(new EventType()));
-		ctx.addGlobalContext("GadgetState", CoerceJavaToLua.coerce(new ScriptGadgetState()));
-		ctx.addGlobalContext("RegionShape", CoerceJavaToLua.coerce(new ScriptRegionShape()));
+		//engine.put("EventType", new EventType());
+		//engine.put("GadgetState", new ScriptGadgetState());
+		//engine.put("RegionShape", new ScriptRegionShape());
 
-		scriptLib = new ScriptLib();
-		ctx.addGlobalContext("ScriptLib", CoerceJavaToLua.coerce(scriptLib));
+		ScriptBinding.coerce(engine, "ScriptLib", new ScriptLib());
+		ScriptBinding.coerce(engine, "EventType", new EventType());
+		ScriptBinding.coerce(engine, "RegionShape", new ScriptRegionShape());
+		ScriptBinding.coerce(engine, "GadgetState", new ScriptGadgetState());
+		ScriptBinding.coerce(engine, "EntityType", Arrays.stream(EntityType.values()).collect(Collectors.toMap(e -> e.name().toUpperCase(), EntityType::getValue)));
 	}
 	
 	public static LuaScriptEngine getEngine() {
@@ -97,22 +114,28 @@ public class ScriptLoader {
 		}
 
 		Grasscutter.getLogger().info("Loading script " + path);
-
 		File file = new File(path);
-
 		if (!file.exists()) return null;
 
 		try {
-			var script = getEngine().compile(
-					Files.readString(file.toPath()),
-					Path.of("./").toAbsolutePath().relativize(file.toPath().toAbsolutePath()).toString());
+			var binding = new LuaBindings(getEngine());
+			var L = binding.getLuaState();
+			ByteArrayOutputStream out = new ByteArrayOutputStream();
+			synchronized(L) {
+				L.load((String)Files.readString(file.toPath()), file.getName());
+				try {
+					L.dump(out, false);
+				} finally {
+					L.pop(1);
+				}
+			}
+			var script = new CompiledLuaScript(getEngine(), out.toByteArray());
 			scriptsCache.put(path, new SoftReference<>(script));
 			return script;
 		} catch (Exception e) {
 			Grasscutter.getLogger().error("Loading script {} failed!", path, e);
 			return null;
 		}
-
 	}
 
 	public static SceneMeta getSceneMeta(int sceneId) {

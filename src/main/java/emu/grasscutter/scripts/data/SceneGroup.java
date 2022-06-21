@@ -2,11 +2,10 @@ package emu.grasscutter.scripts.data;
 
 import emu.grasscutter.Grasscutter;
 import emu.grasscutter.scripts.ScriptLoader;
-import emu.grasscutter.scripts.engine.LuaTable;
 import emu.grasscutter.utils.Position;
 import lombok.Setter;
 import lombok.ToString;
-import net.sandius.rembulan.runtime.LuaFunction;
+import org.terasology.jnlua.util.AbstractTableMap;
 
 import javax.script.CompiledScript;
 import javax.script.ScriptException;
@@ -102,8 +101,8 @@ public class SceneGroup {
 					.collect(Collectors.toMap(x -> x.name, y -> y));
 			triggers.values().forEach(t -> {
 				t.currentGroup = this;
-				t.conditionFunc = (LuaFunction)bindings.get(t.condition);
-				t.actionFunc = (LuaFunction)bindings.get(t.action);
+				//t.conditionFunc = (LuaFunction)bindings.get(t.condition);
+				//t.actionFunc = (LuaFunction)bindings.get(t.action);
 			});
 
 			suites = ScriptLoader.getSerializer().toList(SceneSuite.class, bindings.get("suites"));
@@ -112,13 +111,14 @@ public class SceneGroup {
 			regions.values().forEach(m -> m.group = this);
 
 			init_config = ScriptLoader.getSerializer().toObject(SceneInitConfig.class, bindings.get("init_config"));
-			
+
 			// Garbage
 			Object garbageValue = bindings.get("garbages");
-			if (garbageValue instanceof LuaTable luaTable) {
+			if (garbageValue instanceof AbstractTableMap luaTable) {
 				garbages = new SceneGarbage(luaTable, this);
+				bindings.remove("garbages");
 			}
-			
+
 			// Add variables to suite
 			variables = ScriptLoader.getSerializer().toList(SceneVar.class, bindings.get("variables"));
 			// NPC in groups
@@ -160,7 +160,7 @@ public class SceneGroup {
 		} catch (ScriptException e) {
 			Grasscutter.getLogger().error("Error loading group " + id + " in scene " + sceneId, e);
 		}
-		
+
 		Grasscutter.getLogger().info("group {} in scene {} is loaded successfully.", id, sceneId);
 		return this;
 	}

@@ -21,6 +21,7 @@ public class SceneRegion {
 
 	public boolean contains(Position p) {
 		switch (shape) {
+			//case ScriptRegionShape.POLYGON:
 			case ScriptRegionShape.CUBIC:
 				return (Math.abs(pos.getX() - p.getX()) <= size.getX()) &&
 				       (Math.abs(pos.getZ() - p.getZ()) <= size.getZ());

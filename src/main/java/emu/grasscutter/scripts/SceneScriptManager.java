@@ -11,13 +11,13 @@ import emu.grasscutter.game.world.Scene;
 import emu.grasscutter.net.proto.VisionTypeOuterClass;
 import emu.grasscutter.scripts.constants.EventType;
 import emu.grasscutter.scripts.data.*;
-import emu.grasscutter.scripts.engine.CoerceJavaToLua;
 import emu.grasscutter.scripts.service.ScriptMonsterSpawnService;
 import emu.grasscutter.scripts.service.ScriptMonsterTideService;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import net.sandius.rembulan.runtime.LuaFunction;
 
+import javax.script.Invocable;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
@@ -187,12 +187,17 @@ public class SceneScriptManager {
 
 		for (var region : this.regions.values()) {
 
+			var players = region.getScene().getPlayers();
+			int targetID = 0;
+			if(players.size() > 0)
+				targetID = players.get(0).getUid();
+
 			entities.stream().filter(e -> region.getMetaRegion().contains(e.getPosition()))
 					.forEach(region::addEntity);
 
 			if (region.hasNewEntities()) {
-				callEvent(EventType.EVENT_ENTER_REGION, new ScriptArgs(region.getConfigId()).setSourceEntityId(region.getId()));
-				
+				callEvent(EventType.EVENT_ENTER_REGION, new ScriptArgs(region.getConfigId()).setSourceEntityId(region.getId()).setTargetEntityId(targetID));
+
 				region.resetNewEntities();
 			}
 		}
@@ -269,31 +274,32 @@ public class SceneScriptManager {
 	public void callEvent(int eventType, ScriptArgs params){
 		for (SceneTrigger trigger : this.getTriggersByEvent(eventType)) {
 
-			var ret = callScriptFunc(trigger.conditionFunc, trigger.currentGroup, params);
+			var ret = callScriptFunc(trigger.condition, trigger.currentGroup, params);
 			Grasscutter.getLogger().debug("Call Condition Trigger {}", trigger.condition);
 
-			if (ret instanceof Boolean b && b) {
+			if (ret instanceof Boolean b && b && trigger.action.equals("") == false) {
 				// the SetGroupVariableValueByGroup in tower need the param to record the first stage time
-				callScriptFunc(trigger.actionFunc, trigger.currentGroup, params);
+				callScriptFunc(trigger.action, trigger.currentGroup, params);
 				Grasscutter.getLogger().debug("Call Action Trigger {}", trigger.action);
 			}
 			// TODO some ret may not bool
 		}
 	}
 
-	private Object callScriptFunc(LuaFunction funcLua, SceneGroup group, ScriptArgs params){
+	private Object callScriptFunc(String funcLua, SceneGroup group, ScriptArgs params){
 		Object ret = Boolean.TRUE;
 
-		if (funcLua != null) {
-			Object args = null;
+		if (funcLua.equals("") == false) {
+			/*Object args = null;
 
 			if (params != null) {
 				args = CoerceJavaToLua.coerce(params);
+			}*/
+			try {
+				ret = ((Invocable) ScriptLoader.getEngine()).invokeFunction(funcLua, new ScriptLibContext(this, group), params);
+			} catch (Exception e) {
+				Grasscutter.getLogger().error("Unable to execute script function: " + funcLua + ". Detailed exception: " + e);
 			}
-
-			ret = ScriptLoader.getEngine().getLuaContext().execute(funcLua,
-					new ScriptLibContext(this, group),
-					args);
 		}
 		return ret;
 	}
@@ -314,6 +320,7 @@ public class SceneScriptManager {
 					.filter(e -> e.getConfigId() == g.config_id)
 					.findFirst();
 			if(hasEntity.isPresent()){
+				//return (EntityGadget)hasEntity.get();
 				return null;
 			}
 		}
