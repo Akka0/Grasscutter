@@ -48,7 +48,7 @@ public class GameQuest {
 		this.startTime = this.acceptTime;
 		this.state = QuestState.QUEST_STATE_UNFINISHED;
 
-		if (questData.getFinishCond() != null && questData.getAcceptCond().size() != 0) {
+		if (questData.getFinishCond() != null && questData.getFinishCond().size() != 0) {
 			this.finishProgressList = new int[questData.getFinishCond().size()];
 		}
 
